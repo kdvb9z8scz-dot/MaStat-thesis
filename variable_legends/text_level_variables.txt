@@ -1,0 +1,61 @@
+- average_word_length: number of syllables / number of word tokens
+- average_sentence_length: number of word tokens / number of sentences
+- ratio_long_words: number of word tokens with more than 6 characters / total number of word tokens
+- percentage_polysyllable_words: number of word tokens with syllables >= 3 / total number of word tokens
+- percentage_frequent_nl_words: number of word tokens found in CLIB list (Staphorsius 1994 = list with particularly frequent Dutch words) / total number of word tokens
+- type_token_ratio: number of word types / number of word tokens
+- avg_content: number of content word tokens / number of word tokens
+- avg_funct: number of function word tokens / number of word tokens
+- avg_noun: number of noun tokens / number of word tokens
+- avg_type_noun: number of (unique) noun types / number of word tokens
+- avg_noun_sent: number of noun tokens / number_of_sentences
+- avg_type_noun_sent: number of (unique) noun types / number_of_sentences
+- avg_noun_types: number of (unique) noun types / total number of (unique) word types
+- avg_adj: number of adjective tokens / number of word tokens
+- avg_type_adj: number of (unique) adjective types / number of word tokens
+- avg_adj_sent: number of adjective tokens / number_of_sentences
+- avg_type_adj_sent: number of (unique) adjective types / number_of_sentences
+- avg_adj_types: number of (unique) adjective types / total number of (unique) word types
+- avg_verb: number of verb tokens / number of word tokens
+- avg_type_verb: number of (unique) verb types / number of word tokens
+- avg_verb_sent: number of verb tokens / number_of_sentences
+- avg_type_verb_sent: number of (unique) verb types / number_of_sentences
+- avg_verb_types: number of (unique) verb types / total number of (unique) word types
+- avg_adverb: number of adverb tokens / number of word tokens
+- avg_type_adverb: number of (unique) adverb types / number of word tokens
+- avg_adverb_sent: number of adverb tokens / number_of_sentences
+- avg_type_adverb_sent: number of (unique) adverb types / number_of_sentences
+- avg_adverb_types: number of (unique) adverb types / total number of (unique) word types
+- avg_prep: number of preposition tokens / number of word tokens
+- avg_type_prep: number of (unique) preposition types / number of word tokens
+- avg_prep_sent: number of preposition tokens / number_of_sentences
+- avg_type_prep_sent: number of (unique) preposition types / number_of_sentences
+- avg_prep_types: number of (unique) preposition types / total number of (unique) word types
+- avg_conn_doc: number of connective tokens / number of word tokens
+- avg_conn_sent: number of connective tokens / number of sentences
+- avg_cause_doc: number of causative connective tokens / number of word tokens
+- avg_cause_sent: number of causative connective tokens / number of sentences
+- avg_temp_doc: number of temporal connective tokens / number of word tokens
+- avg_temp_sent: number of temporal connective tokens / number of sentences
+- avg_add_doc: number of additive connective tokens / number of word tokens
+- avg_add_sent: number of additive connective tokens / number of sentences
+- avg_cont_doc: number of contrastive connective tokens / number of word tokens
+- avg_cont_sent: number of contrastive connective tokens / number of sentences
+- avg_conc_doc: number of concessive connective tokens / number of word tokens
+- avg_conc_sent: number of concessive connective tokens / number of sentences
+- avgtfidf: sum(tfidfs) / length(tfidfs) --> hiermee meet je hoe domain-specific woorden zijn (~ termhood). Gebaseerd op background corpus (SoNaR corpus)
+- avgll = sum(lls) / length(lls) --> log likelihood, hiermee meet je hoe natuurlijk woorden gebruikt worden (~ unithood, juiste collocaties, ...) gebaseerd op background corpus (SoNaR)
+- perplex: perplexity (cf. Wikipedia)
+- normperplex: normalized perplexity
+- brouwer_score: Brouwer-score --> (195 - (2 * average_sentence_length) - (66.7 * average_syllables_per_word) )
+- douma_score: Douma-score --> (206.83 - (0.93 * average_sentence_length) - (77.0 * average_syllables_per_word))
+- cilt_score: Cito Leesindex Technisch Lezen (NL) --> (114.49 + (0.28 * percentage_frequent_nl_words) - (12.33 * average_word_length))
+- clib_score: Cito Leesindex voor het basisonderwijs (NL) --> (46.0 - (6.603 * average_word_length) + (0.474 * percentage_frequent_nl_words) - (36.5 * type_token_ratio) + (1.425 * ((1 / average_sentence_length) * 100)))
+- flesch_score: Flesh-score --> (206.835 - (1.015 * average_sentence_length) - (84.6 * average_syllables_per_word))
+- rgs_score: Dale-Chall Reading Grade Score, a grade level formula. --> ((0.1579 * dale_word_frequency_score) + (0.0496 * average_sentence_length) + 3.6365)
+- cli_score: Coleman-Liau Index, a grade level formula. --> cli_score = (5.89 * average_word_length) - (29.6 * number_of_sentences_per_words) - 15.8
+- kincaid_score: Flesh-Kincaid-score --> (0.39 * average_sentence_length) + (11.8 * average_syllables_per_word) - 15.59
+- fog_score: Gunning Fog index, a grade level formula --> 0.4 * (average_sentence_length + percentage_polysyllable_words)
+- ari_score: Automated Readability Index, a grade level formula. --> (4.71 * average_word_length) + (0.5 * average_sentence_length) - 21.43
+- smog_score: SMOG: Simple Measure of Gobbledygook, a grade level formula. --> 1.0430 * sqrt(30.0 * average_polysyllable_per_sentence) + 3.1291
+- lix_score: Lasbarhetsindex Bjornsson (Zweeds) --> (average_sentence_length + 100 * ratio_long_words)
