@@ -1,0 +1,20 @@
+- fileID: Unique ID of plenary speech in European Parliament
+- lineID: Unique ID of sentence in the speech
+- line_seq: Sequence number of the sentence
+- nr_EUS: # of Uh(m)'s
+- nr_TOT: Total # words in sentence
+- nr_CON: # of Content words in sentence
+- nr_NUM: # of Numerals in sentence
+- nr_FUN: # of Function words in sentence
+- nr_LNK: # of Link words in sentence
+- nr_SPC: # of Special words
+- lang4: Language variety, 4 levels (NED_nl, NED_vl, NED_in, FRA)
+- lang: Language variety, reduced: (NED_or (= NED_nl + NED_vl), NED_in, FRA)
+- rt_DEL: Delivery rate per speech (= total number of words in speech / total number of minutes to produce the speech)
+- rt_LEX: Lexical density per sentence = nr_CON / (nr_CON + nr_FUN + nr_LNK)
+- rt_NUM: Percentage of Numerals per sentence = nr_NUM / nr_TOT
+- nr_3gr: # of 3-grams in sentence (matched against the reference list in Plevoets & Defrancq 2018)
+- nr_4gr: # of 4-grams in sentence (matched against the reference list in Plevoets & Defrancq 2018)
+- rt_FRM: Formulaicity per sentence = (nr_3gr + nr_4gr) / (2 * nr_TOT - 5)
+- nr_HYP: # of "dat" or "que" as a subordinate conjunction in sentence
+- rt_HYP: Syntactic complexity per sentence = nr_HYP / nr_TOT
