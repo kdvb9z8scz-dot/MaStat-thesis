@@ -1,5 +1,5 @@
 # MaStat-thesis
-This repository contains code required to reproduce the data analysis I conducted for my thesis in Statistical Data Analysis (Ghent University). 
+This repository contains all code required to reproduce the data analysis for my thesis in Statistical Data Analysis (Ghent University), as well as some of the output. 
 
 Contents:
 - Data documentation: legends for the variables
