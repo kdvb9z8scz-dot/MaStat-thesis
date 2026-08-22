@@ -1,0 +1,1699 @@
+---
+title: "MaStat_thesis_KDN_code"
+author: "Kobe De Neve"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, results = FALSE, message = FALSE, warning = FALSE}
+# load all required packages
+library(tidyverse)
+library(ggbiplot)
+library(e1071)
+library(gridExtra)
+library(GGally)
+library(flextable)
+library(mgcv)
+library(performance)
+library(mgcViz)
+library(ggeffects)
+library(visreg)
+```
+
+# 1. Loading and Inspecting the Data
+
+```{r, results = FALSE, message = FALSE, warning = FALSE}
+# load main data and filter our French source texts
+dat_main <- read.delim("data/DATA4.txt",
+                       stringsAsFactors = TRUE)
+
+dat_main <- subset(dat_main, lang4 != "FRA")
+dat_main <- droplevels(dat_main)
+
+str(dat_main)
+View(dat_main)
+```
+
+```{r, results = FALSE, message = FALSE, warning = FALSE}
+# load dataset with text-level readability measures
+dat_readibl <- read.delim("data/READIBL3.txt",
+                          stringsAsFactors = TRUE)
+
+str(dat_readibl)
+View(dat_readibl)
+```
+
+```{r, results = FALSE, message = FALSE, warning = FALSE}
+# combine the datasets
+dat <- merge(dat_main, dat_readibl,
+             by.x = "fileID", by.y = "filename",
+             all = TRUE)
+
+dat <- subset(dat, nr_TOT >= 3)
+dat <- droplevels(dat)
+
+str(dat)
+View(dat)
+```
+
+# 2. Exploratory Analysis
+
+## 2.1. Principal Component Analysis
+
+```{r, results = FALSE, message = FALSE, warning = FALSE}
+# dat_readibl with lang4 column added
+dat_pca <- dat %>%
+  select(c(1, 11, 21:81)) %>%
+  distinct
+
+# perform pca
+pca <- prcomp(dat_pca[, -c(1:2)], center = TRUE, scale = TRUE)
+summary(pca)
+```
+
+```{r}
+# screeplot
+ppi = 200
+png("plots/pca_screeplot.png", 
+    width = 7*ppi, height = 4*ppi, res = ppi)
+ggscreeplot(pca, size = 2, linewidth = 0.5) +
+  theme_minimal() # elbow at PC4
+dev.off()
+```
+
+```{r}
+# plot of loadings PC1
+pca_loadings <- data.frame(pca$rotation)
+pca_loadings <- within(pca_loadings, vars <- row.names(pca_loadings))
+
+ppi = 200
+png("plots/pc1_loadings.png", 
+    width = 7*ppi, height = 8*ppi, res = ppi)
+ggplot(pca_loadings, aes(y = vars, x = PC1)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Contribution to PC1", y = "Variable") +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# plot of loadings PC2
+ppi = 200
+png("plots/pc2_loadings.png", 
+    width = 7*ppi, height = 8*ppi, res = ppi)
+ggplot(pca_loadings, aes(y = vars, x = PC2)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Contribution to PC2", y = "Variable") +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# plot of loadings PC3
+ppi = 200
+png("plots/pc3_loadings.png", 
+    width = 7*ppi, height = 8*ppi, res = ppi)
+ggplot(pca_loadings, aes(y = vars, x = PC3)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Contribution to PC3", y = "Variable") +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# plot of loadings PC4
+ppi = 200
+png("plots/pc4_loadings.png", 
+    width = 7*ppi, height = 8*ppi, res = ppi)
+ggplot(pca_loadings, aes(y = vars, x = PC4)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Contribution to PC4", y = "Variable") +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# biplot
+ppi = 200
+png("plots/pca_biplot.png", 
+    width = 7*ppi, height = 7*ppi, res = ppi)
+ggbiplot(pca, var.axes = FALSE, groups = dat_pca$lang) +
+  labs(x = "Standardised PC1 (29.8%)",
+       y = "Standardised PC2 (17.6%)",
+       color = "Variety") +
+  scale_color_discrete(labels = c("Interpreted Dutch",
+                                  "Netherlandic Dutch",
+                                  "Belgian Dutch")) +
+  theme_minimal()
+dev.off()
+```
+
+## 2.2. Univariate Descriptives
+
+**number of N-grams**
+
+```{r}
+# histogram
+dat <- within(dat, nr_Ngr <- nr_3gr + nr_4gr)
+
+nr_Ngr_hist <- ggplot(dat, aes(x = nr_Ngr)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(nr_Ngr),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(nr_Ngr),
+                 color = "median")) + 
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Number of N-grams") +
+  theme_minimal()
+
+# boxplot
+nr_Ngr_box <- ggplot(dat, aes(y = nr_Ngr)) +
+  geom_boxplot() +
+  labs(y = "Number of N-grams") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/nr_Ngr_uni_des.png", 
+    width = 8*ppi,height = 4*ppi, res = ppi)
+grid.arrange(nr_Ngr_hist, nr_Ngr_box, nrow = 1,
+             top = "Distribution of number of N-grams")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(rt_FRM),
+    median = median(rt_FRM),
+    sd = sd(rt_FRM),
+    IQR = IQR(rt_FRM),
+    skew = skewness(rt_FRM),
+    kurtosis = kurtosis(rt_FRM)
+  )
+```
+
+**rate of *uh(m)***
+
+```{r}
+# variable for the rate of 'uh(m)'
+dat <- within(dat, rt_EUS <- nr_EUS / nr_TOT)
+
+# histogram
+rt_EUS_hist <- ggplot(dat, aes(x = rt_EUS)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(rt_EUS),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(rt_EUS),
+             color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Rate of 'uh(m)'") +
+  theme_minimal()
+
+# boxplot
+rt_EUS_box <- ggplot(dat, aes(y = rt_EUS)) +
+  geom_boxplot() +
+  labs(y = "Rate of 'uh(m)'") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/rt_EUS_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(rt_EUS_hist, rt_EUS_box, nrow = 1,
+             top = "Distribution of disfluency (rate of 'uhm')")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(rt_EUS),
+    median = median(rt_EUS),
+    sd = sd(rt_EUS),
+    IQR = IQR(rt_EUS),
+    skew = skewness(rt_EUS),
+    kurtosis = kurtosis(rt_EUS)
+  )
+```
+
+**language variety**
+
+```{r}
+# barplot at utterance level
+lang4_utterance <- ggplot(dat, aes(x = lang4)) +
+  geom_bar() +
+  labs(x = "Variety of Dutch") +
+  theme_minimal()
+
+# barplot at text level
+lang4_text <- ggplot(dat_pca, aes(x = lang4)) +
+  geom_bar() +
+  labs(x = "Variety of Dutch") +
+  theme_minimal()
+
+ppi = 200
+png("plots/lang4_uni_des.png", 
+    width = 6*ppi, height = 5*ppi, res = ppi)
+grid.arrange(lang4_utterance, lang4_text, nrow = 2,
+             top = "Utterance-level (top) and text-level (bottom) distribution of language variety")
+dev.off()
+```
+
+```{r}
+# utterance-level summary tables
+with(dat, table(lang4))
+with(dat, prop.table(table(lang4)))
+
+# text-level summary tables
+with(dat_pca, table(lang4))
+with(dat_pca, prop.table(table(lang4)))
+```
+
+**lexical density**
+
+```{r}
+# histogram
+rt_LEX_hist <- ggplot(dat, aes(x = rt_LEX)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(rt_LEX),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(rt_LEX),
+                 color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Lexical density") +
+  theme_minimal()
+
+# boxplot
+rt_LEX_box <- ggplot(dat, aes(y = rt_LEX)) +
+  geom_boxplot() +
+  labs(y = "Lexical density") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/rt_LEX_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(rt_LEX_hist, rt_LEX_box, nrow = 1,
+             top = "Distribution of lexical density")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(rt_LEX),
+    median = median(rt_LEX),
+    sd = sd(rt_LEX),
+    IQR = IQR(rt_LEX),
+    skew = skewness(rt_LEX),
+    kurtosis = kurtosis(rt_LEX)
+  )
+```
+
+**syntactic complexity**
+
+```{r}
+# histogram
+rt_HYP_hist <- ggplot(dat, aes(x = rt_HYP)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(rt_HYP),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(rt_HYP),
+                 color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Syntactic complexity") +
+  theme_minimal()
+
+# boxplot
+rt_HYP_box <- ggplot(dat, aes(y = rt_HYP)) +
+  geom_boxplot() +
+  labs(y = "Syntactic complexity") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/rt_HYP_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(rt_HYP_hist, rt_HYP_box, nrow = 1,
+             top = "Distribution of syntactic complexity (rate of 'dat')")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(rt_HYP),
+    median = median(rt_HYP),
+    sd = sd(rt_HYP),
+    IQR = IQR(rt_HYP),
+    skew = skewness(rt_HYP),
+    kurtosis = kurtosis(rt_HYP)
+  )
+```
+
+**Brouwer score**
+
+```{r}
+# histogram
+bs_hist <- ggplot(dat_pca, aes(x = brouwer_score)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(brouwer_score),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(brouwer_score),
+                 color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Brouwer score") +
+  theme_minimal()
+
+# boxplot
+bs_box <- ggplot(dat_pca, aes(y = brouwer_score)) +
+  geom_boxplot() +
+  labs(y = "Brouwer score") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/bs_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(bs_hist, bs_box, nrow = 1,
+             top = "Distribution of Brouwer score")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat_pca %>%
+  summarise(
+    mean = mean(brouwer_score),
+    median = median(brouwer_score),
+    sd = sd(brouwer_score),
+    IQR = IQR(brouwer_score),
+    skew = skewness(brouwer_score),
+    kurtosis = kurtosis(brouwer_score)
+  )
+```
+
+**average number of connectives per sentence**
+
+```{r}
+# histogram
+avg_conn_sent_hist <- ggplot(dat_pca, aes(x = avg_conn_sent)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(avg_conn_sent),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(avg_conn_sent),
+                 color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Average number of connectives per sentence") +
+  theme_minimal()
+
+# boxplot
+avg_conn_sent_box <- ggplot(dat_pca, aes(y = avg_conn_sent)) +
+  geom_boxplot() +
+  labs(y = "Average number of connectives per sentence") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/avg_conn_sent_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(avg_conn_sent_hist, avg_conn_sent_box, nrow = 1,
+             top = "Distribution of average number of connectives per sentence")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(ratio_long_words),
+    median = median(ratio_long_words),
+    sd = sd(ratio_long_words),
+    IQR = IQR(ratio_long_words),
+    skew = skewness(ratio_long_words),
+    kurtosis = kurtosis(ratio_long_words)
+  )
+```
+
+**type-token ratio**
+
+```{r}
+# histogram
+ttr_hist <- ggplot(dat_pca, aes(x = type_token_ratio)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean(type_token_ratio),
+                 color = "mean")) +
+  geom_vline(aes(xintercept = median(type_token_ratio),
+                 color = "median")) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("mean" = "blue", "median" = "red")
+  ) +
+  labs(x = "Type-token ratio") +
+  theme_minimal()
+
+# boxplot
+ttr_box <- ggplot(dat_pca, aes(y = type_token_ratio)) +
+  geom_boxplot() +
+  labs(y = "Type-token ratio") + 
+  theme_minimal()
+
+ppi = 200
+png("plots/ttr_uni_des.png", 
+    width = 8*ppi, height = 4*ppi, res = ppi)
+grid.arrange(ttr_hist, ttr_box, nrow = 1,
+             top = "Distribution of type-token ratio")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  summarise(
+    mean = mean(type_token_ratio),
+    median = median(type_token_ratio),
+    sd = sd(type_token_ratio),
+    IQR = IQR(type_token_ratio),
+    skew = skewness(type_token_ratio),
+    kurtosis = kurtosis(type_token_ratio)
+  )
+```
+
+## 2.3. Bivariate Descriptives
+
+**all numerical variables**
+
+```{r}
+# scatterplot matrix
+ppi = 200
+png("plots/pairsplot.png", 
+    width = 14*ppi, height = 12*ppi, res = ppi)
+ggpairs(dat, aes(color = lang4, alpha = 0.2),
+        columns = c("nr_Ngr", "rt_EUS", "rt_LEX", "rt_HYP",
+                    "brouwer_score", "avg_conn_sent",
+                    "type_token_ratio")
+        ) +
+  theme_minimal()
+dev.off()
+```
+
+**number of N-grams across varieties**
+
+```{r}
+# histograms
+nr_Ngr_hist2 <- ggplot(dat, aes(x = nr_Ngr, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Number of N-grams") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+nr_Ngr_box2 <- ggplot(dat, aes(x = lang4, y = nr_Ngr, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Number of N-grams",
+       x = "language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/nr_Ngr_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(nr_Ngr_hist2, nr_Ngr_box2, nrow = 2,
+             top = "Distribution of number of N-grams per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>% 
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(rt_FRM),
+    median = median(rt_FRM),
+    sd = sd(rt_FRM),
+    IQR = IQR(rt_FRM),
+    skew = skewness(rt_FRM),
+    kurtosis = kurtosis(rt_FRM)
+  )
+```
+
+**rate of *uh(m)* across varieties**
+
+```{r}
+# histograms
+rt_EUS_hist2 <- ggplot(dat, aes(x = rt_EUS, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Rate of 'uh(m)'") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+rt_EUS_box2 <- ggplot(dat, aes(x = lang4, y = rt_EUS, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Rate of 'uh(m)'",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/rt_EUS_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(rt_EUS_hist2, rt_EUS_box2, nrow = 2,
+             top = "Distribution of disfluency (rate of 'uhm') per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(rt_EUS),
+    median = median(rt_EUS),
+    sd = sd(rt_EUS),
+    IQR = IQR(rt_EUS),
+    skew = skewness(rt_EUS),
+    kurtosis = kurtosis(rt_EUS)
+  )
+```
+
+**lexical density across varieties**
+
+```{r}
+# histograms
+rt_LEX_hist2 <- ggplot(dat, aes(x = rt_LEX, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Lexical density") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+rt_LEX_box2 <- ggplot(dat, aes(x = lang4, y = rt_LEX, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Lexical density",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/rt_LEX_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(rt_LEX_hist2, rt_LEX_box2, nrow = 2,
+             top = "Distribution of lexical density per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(rt_LEX),
+    median = median(rt_LEX),
+    sd = sd(rt_LEX),
+    IQR = IQR(rt_LEX),
+    skew = skewness(rt_LEX),
+    kurtosis = kurtosis(rt_LEX)
+  )
+```
+
+**syntactic complexity across varieties**
+
+```{r}
+# histograms
+rt_HYP_hist2 <- ggplot(dat, aes(x = rt_HYP, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Syntactic complexity") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+rt_HYP_box2 <- ggplot(dat, aes(x = lang4, y = rt_HYP, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Syntactic complexity",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/rt_HYP_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(rt_HYP_hist2, rt_HYP_box2, nrow = 2,
+             top = "Distribution of syntactic complexity (rate of 'dat') per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat %>%
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(rt_HYP),
+    median = median(rt_HYP),
+    sd = sd(rt_HYP),
+    IQR = IQR(rt_HYP),
+    skew = skewness(rt_HYP),
+    kurtosis = kurtosis(rt_HYP)
+  )
+```
+
+**Brouwer score across varieties**
+
+```{r}
+# histograms
+bs_hist2 <- ggplot(dat_pca, aes(x = brouwer_score, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Brouwer score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+bs_box2 <- ggplot(dat_pca, aes(x = lang4, y = brouwer_score, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Brouwer score",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/bs_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(bs_hist2, bs_box2, nrow = 2,
+             top = "Distribution of Brouwer score per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat_pca %>% 
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(brouwer_score),
+    median = median(brouwer_score),
+    sd = sd(brouwer_score),
+    IQR = IQR(brouwer_score),
+    skew = skewness(brouwer_score),
+    kurtosis = kurtosis(brouwer_score)
+  )
+```
+
+**average number of connectives per sentence across varieties**
+
+```{r}
+# histograms
+avg_conn_sent_hist2 <- ggplot(dat_pca, aes(x = avg_conn_sent, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Average number of connectives per sentence") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+avg_conn_sent_box2 <- ggplot(dat_pca, aes(x = lang4, y = avg_conn_sent, 
+                                          col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Average number of connectives per sentence",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/avg_conn_sent_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(avg_conn_sent_hist2, avg_conn_sent_box2, nrow = 2,
+             top = "Distribution of average number of connectives per sentence per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat_pca %>% 
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(avg_conn_sent),
+    median = median(avg_conn_sent),
+    sd = sd(avg_conn_sent),
+    IQR = IQR(avg_conn_sent),
+    skew = skewness(avg_conn_sent),
+    kurtosis = kurtosis(avg_conn_sent)
+  )
+```
+
+**type-token ratio across varieties**
+
+```{r}
+# histograms
+ttr_hist2 <- ggplot(dat_pca, aes(x = type_token_ratio, fill = lang4)) +
+  geom_histogram(alpha = 0.6) +
+  facet_wrap(facet = ~ lang4) +
+  labs(x = "Type-token ratio") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# boxplots
+ttr_box2 <- ggplot(dat_pca, aes(x = lang4, y = type_token_ratio, col = lang4)) +
+  geom_boxplot() +
+  labs(y = "Type-token ratio",
+       x = "Language variety") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ppi = 200
+png("plots/ttr_bi_des.png", 
+    width = 8*ppi, height = 7*ppi, res = ppi)
+grid.arrange(ttr_hist2, ttr_box2, nrow = 2,
+             top = "Distribution of type-token ratio per variety")
+dev.off()
+```
+
+```{r}
+# summary stats
+dat_pca %>% 
+  group_by(lang4) %>%
+  summarise(
+    mean = mean(type_token_ratio),
+    median = median(type_token_ratio),
+    sd = sd(type_token_ratio),
+    IQR = IQR(type_token_ratio),
+    skew = skewness(type_token_ratio),
+    kurtosis = kurtosis(type_token_ratio)
+  )
+```
+
+**table with all descriptives**
+
+```{r}
+# set variables
+utterance_vars <- c("nr_Ngr", "rt_EUS", "rt_LEX", "rt_HYP")
+text_vars <- c("brouwer_score", "avg_conn_sent", "type_token_ratio")
+
+# function for descriptives
+get_descriptives <- function(data, vars) {
+  data %>%
+    pivot_longer(
+      cols = all_of(vars),
+      names_to = "Variable",
+      values_to = "Value"
+    ) %>%
+    group_by(Variable, lang4) %>%
+    summarise(
+      Mean     = round(mean(Value, na.rm = TRUE), 2),
+      Median   = round(median(Value, na.rm = TRUE), 2),
+      SD       = round(sd(Value, na.rm = TRUE), 2),
+      IQR      = round(IQR(Value, na.rm = TRUE), 2),
+      Skewness = round(skewness(Value, na.rm = TRUE), 2),
+      Kurtosis = round(kurtosis(Value, na.rm = TRUE), 2),
+      .groups  = "drop"
+    )
+}
+
+# utterance-level descriptives
+tab_utterance <- get_descriptives(dat, utterance_vars)
+
+# text-level descriptives
+tab_text <- get_descriptives(dat_pca, text_vars)
+
+# combine
+tab_descriptive <- bind_rows(
+  tab_utterance,
+  tab_text
+)
+
+# export
+tab_descriptive %>%
+  flextable() %>%
+  autofit() %>%
+  save_as_docx(path = "tables/descriptives.docx")
+```
+
+# 3. Modeling
+
+## **3.1.2. Initial Model**
+
+**Poisson model**
+
+```{r}
+# create offset and total number of N-grams per utterance
+dat <- within(dat, off <- log(2 * nr_TOT - 5))
+
+# model
+m1 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) +
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = poisson, discrete = TRUE, method = "fREML")
+
+summary(m1)
+```
+
+```{r}
+# initial plots
+plot.gamViz(getViz(m1))
+```
+
+```{r}
+# overdispersion check
+pearson_chisq <- sum(resid(m1, type = "pearson")^2)
+rdf <- df.residual(m1)
+pearson_chisq / rdf
+```
+
+```{r}
+# zero-inflation check
+check_zeroinflation(m1)
+```
+
+```{r, message = FALSE}
+# basis dimension check
+k.check(m1)
+```
+
+```{r}
+# default diagnostic plots
+sink(tempfile())
+check.gamViz(getViz(m1))
+sink()
+```
+
+**negative binomial model**
+
+```{r}
+# refit m1 as negative binomial
+m1_nb <- bam(nr_Ngr ~ lang4 + 
+               s(rt_EUS, by = lang4) + 
+               s(rt_LEX, by = lang4) +
+               s(rt_HYP, by = lang4) + 
+               s(brouwer_score, by = lang4) + 
+               s(avg_conn_sent, by = lang4) + 
+               s(type_token_ratio, by = lang4) +
+               offset(off) + 
+               s(fileID, bs = "re"),
+             data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+AIC(m1, m1_nb) # m1_nb has much lower AIC
+```
+
+```{r}
+# initial plots
+plot.gamViz(getViz(m1_nb))
+```
+
+```{r}
+# dispersion parameter: smaller = more overdispersion
+m1_nb$family$getTheta(trans = TRUE)
+```
+
+```{r}
+# zero-inflation check
+check_zeroinflation(m1_nb)
+```
+
+```{r}
+# basis dimension check
+k.check(m1_nb)
+```
+
+```{r}
+# default diagnostic plots
+sink(tempfile())
+check.gamViz(getViz(m1_nb))
+sink()
+```
+
+```{r}
+# concurivty
+concurvity(m1_nb, full = TRUE) # severe concurvity
+```
+
+```{r}
+# explore concurvity further
+
+# pairwise concurvity measures
+conc <- concurvity(m1_nb, full = FALSE)$estimate
+round(conc, 2)
+
+# pairwise correlations
+vars <- c("rt_EUS", "rt_LEX", "rt_HYP", "brouwer_score",
+          "avg_conn_sent", "type_token_ratio")
+round(cor(dat[, vars]), 2)
+
+# model comparisons
+conc_test1 <- bam(nr_Ngr ~ s(brouwer_score) + offset(off) + 
+                    s(fileID, bs = "re"),
+                  data = dat, family = nb, discrete = TRUE, method = "fREML")
+concurvity(conc_test1) # still high concurvity
+
+conc_test2 <- bam(nr_Ngr ~ lang4 + 
+                    s(rt_EUS, by = lang4) + 
+                    s(rt_LEX, by = lang4) +
+                    s(rt_HYP, by = lang4) + 
+                    s(brouwer_score, by = lang4) + 
+                    s(avg_conn_sent, by = lang4) + 
+                    s(type_token_ratio, by = lang4) + 
+                    offset(off),
+                  data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+concurvity(conc_test2) # concurvity disappears when we remove random effect
+summary(conc_test2)
+plot.gamViz(getViz(conc_test2))
+```
+
+## 3.2. Model building
+
+**exploring interactions**
+
+```{r}
+# stepwise selection of interactions: first step
+
+# interaction between rt_EUS and rt_LEX
+m2 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            ti(rt_EUS, rt_LEX, by = lang4) + 
+            s(rt_HYP, by = lang4) +
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            offset(off) +
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and rt_HYP
+m3 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            ti(rt_EUS, rt_HYP, by = lang4) +
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            offset(off) +
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and brouwer_score
+m4 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            s(brouwer_score, by = lang4) + 
+            ti(rt_EUS, brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) +  
+            s(type_token_ratio, by = lang4) + 
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and avg_conn_sent
+m5 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            ti(rt_EUS, avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and type_token_ratio
+m6 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            ti(rt_EUS, type_token_ratio, by = lang4) + 
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# comparisons
+AIC(m1_nb, m2, m3, m4, m5, m6) # m3 preferred
+```
+
+```{r}
+# stepwise selection of interactions: second step
+
+# interaction between rt_EUS and rt_LEX
+m7 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) + 
+            ti(rt_EUS, rt_LEX, by = lang4) + 
+            s(rt_HYP, by = lang4) + 
+            ti(rt_EUS, rt_HYP, by = lang4) + 
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and brouwer_score
+m8 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            ti(rt_EUS, rt_HYP, by = lang4) +
+            s(brouwer_score, by = lang4) + 
+            ti(rt_EUS, brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) + 
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and avg_conn_sent
+m9 <- bam(nr_Ngr ~ lang4 + 
+            s(rt_EUS, by = lang4) + 
+            s(rt_LEX, by = lang4) +
+            s(rt_HYP, by = lang4) + 
+            ti(rt_EUS, rt_HYP, by = lang4) +
+            s(brouwer_score, by = lang4) + 
+            s(avg_conn_sent, by = lang4) + 
+            ti(rt_EUS, avg_conn_sent, by = lang4) + 
+            s(type_token_ratio, by = lang4) +  
+            offset(off) + 
+            s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and type_token_ratio
+m10 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) +
+             s(brouwer_score, by = lang4) + 
+             s(avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) + 
+             ti(rt_EUS, type_token_ratio, by = lang4) + 
+             offset(off) + 
+             s(fileID, bs = "re"),
+          data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# comparisons
+AIC(m3, m7, m8, m9, m10) # m10 preferred
+```
+
+```{r}
+# stepwise selection of interactions: third step
+
+# interaction between rt_EUS and rt_LEX
+m11 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             ti(rt_EUS, rt_LEX, by = lang4) + 
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) + 
+             s(brouwer_score, by = lang4) + 
+             s(avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) + 
+             ti(rt_EUS, type_token_ratio, by = lang4) + 
+             offset(off) + 
+             s(fileID, bs = "re"),
+           data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and brouwer_score
+m12 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) +
+             s(brouwer_score, by = lang4) + 
+             ti(rt_EUS, brouwer_score, by = lang4) + 
+             s(avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) +
+             ti(rt_EUS, type_token_ratio, by = lang4) + 
+             offset(off) + 
+             s(fileID, bs = "re"),
+           data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and avg_conn_sent
+m13 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) +
+             s(brouwer_score, by = lang4) + 
+             s(avg_conn_sent, by = lang4) + 
+             ti(rt_EUS, avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) + 
+             ti(rt_EUS, type_token_ratio, by = lang4) + 
+             offset(off) + 
+             s(fileID, bs = "re"),
+           data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# comparisons
+AIC(m10, m11, m12, m13) # m13 preferred
+```
+
+```{r}
+# stepwise selection of interactions: fourth step
+
+# interaction between rt_EUS and rt_LEX
+m14 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             ti(rt_EUS, rt_LEX, by = lang4) + 
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) + 
+             s(brouwer_score, by = lang4) + 
+             s(avg_conn_sent, by = lang4) + 
+             ti(rt_EUS, avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) + 
+             ti(rt_EUS, type_token_ratio, by = lang4) + 
+             offset(off) + 
+             s(fileID, bs = "re"),
+           data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# interaction between rt_EUS and brouwer_score
+m15 <- bam(nr_Ngr ~ lang4 + 
+             s(rt_EUS, by = lang4) + 
+             s(rt_LEX, by = lang4) +
+             s(rt_HYP, by = lang4) + 
+             ti(rt_EUS, rt_HYP, by = lang4) +
+             s(brouwer_score, by = lang4) + 
+             ti(rt_EUS, brouwer_score, by = lang4) +
+             s(avg_conn_sent, by = lang4) + 
+             ti(rt_EUS, avg_conn_sent, by = lang4) + 
+             s(type_token_ratio, by = lang4) + 
+             ti(rt_EUS, type_token_ratio, by = lang4) +
+             offset(off) + 
+             s(fileID, bs = "re"),
+           data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+# comparisons
+AIC(m13, m14, m15) # no further improvement > keep m13
+```
+
+**checking selected model**
+
+```{r}
+# intitial plots
+plot.gamViz(getViz(m13))
+```
+
+```{r}
+# EDF and basis dimension check
+round(k.check(m13), 2)
+```
+
+```{r}
+# zero-inflation check
+check_zeroinflation(m10)
+```
+
+```{r}
+# default diagnostic plots
+ppi = 200
+png("plots/m13_diagnostics.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+sink(tempfile())
+check.gamViz(getViz(m10))
+sink()
+dev.off()
+```
+
+```{r}
+# normal QQ-plot of random intercepts
+ppi = 200
+png("plots/m13_QQ_ranef.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+plot(sm(getViz(m10), 25))
+dev.off()
+```
+
+```{r}
+# diagnostic plots per variety
+
+# extract residuals and fitted values
+dat <- within(dat, resids <- resid(m13, type = "deviance"))
+dat <- within(dat, fitted <- fitted(m13))
+dat <- within(dat, lin_pred <- m13$linear.predictors)
+
+# variety labels
+variety_labs <- c(`NED_in` = "Interpreted Dutch",
+                  `NED_nl` = "Netherlandic Dutch",
+                  `NED_vl` = "Belgian Dutch")
+
+# residuals vs. linear predictor per variety
+ppi = 200
+png("plots/m13_res_vs_linpred.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = lin_pred, y = resids)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(facets = ~ lang4, nrow = 2,
+             labeller = as_labeller(variety_labs)) +
+  labs(x = "Residuals",
+       y = "Linear predictor") +
+  theme_minimal()
+dev.off()
+
+# histogram of residuals per variety
+ppi = 200
+png("plots/m13_hist_res.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = resids)) +
+  geom_histogram() +
+  facet_wrap(facets = ~ lang4, nrow = 2,
+             labeller = as_labeller(variety_labs)) +
+  labs(x = "Residuals",
+       y = "Count") +
+  theme_minimal()
+dev.off()
+
+# response vs. fitted values per variety
+cor_dat <- dat %>% group_by(lang4) %>% 
+  summarise(r = cor(nr_Ngr, fitted))
+
+ppi = 200
+png("plots/m13_resp_vs.fit.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = fitted, y = nr_Ngr)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(facets = ~ lang4, nrow = 2,
+             labeller = as_labeller(variety_labs)) +
+  labs(x = "Response",
+       y = "Fitted values") +
+  geom_text(
+    data = cor_dat, aes(x = 8, y = 11,
+                        label = paste0("r = ", round(r, 2))),
+    hjust = 1.1, vjust = 1.5) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# index plot of residuals to check outliers
+ppi = 200
+png("plots/m13_res_index.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+ggplot(dat, aes(x = 1:length(resids), y = resids, col = lang4)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Observation index",
+       y = "Residuals",
+       col = "Variety") +
+  scale_color_discrete(labels = c("Interpreted Dutch",
+                                  "Netherlandic Dutch",
+                                  "Belgian Dutch")) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# check observations with outlying residuals
+dat[which(dat$resids > 2.5), ]
+
+# refit model without these observations and compare
+dat_red <- dat[-which(dat$resids > 2.5), ]
+
+m13_red <- bam(nr_Ngr ~ lang4 + 
+                 s(rt_EUS, by = lang4) + 
+                 s(rt_LEX, by = lang4) +
+                 s(rt_HYP, by = lang4) + 
+                 ti(rt_EUS, rt_HYP, by = lang4) +
+                 s(brouwer_score, by = lang4) + 
+                 s(avg_conn_sent, by = lang4) + 
+                 ti(rt_EUS, avg_conn_sent, by = lang4) + 
+                 s(type_token_ratio, by = lang4) + 
+                 ti(rt_EUS, type_token_ratio, by = lang4) + 
+                 offset(off) + 
+                 s(fileID, bs = "re"),
+               data = dat_red, family = nb, discrete = TRUE, method = "fREML")
+
+summary(m13_red) # no substantial changes
+plot.gamViz(getViz(m13_red))
+check.gamViz(getViz(m13_red))
+cor(fitted(m13_red), dat_red$nr_Ngr)
+```
+
+```{r}
+# residuals vs. predictor plots
+
+# residuals vs. rt_EUS
+ppi = 200
+png("plots/m13_res_vs_rt_EUS.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = rt_EUS, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+
+# residuals vs. rt_LEX
+ppi = 200
+png("plots/m13_res_vs_rt_LEX.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = rt_LEX, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "Lexical density",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+
+# residuals vs. rt_HYP
+ppi = 200
+png("plots/m13_res_vs_rt_HYP.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = rt_HYP, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "Syntactic complexity (rate of 'dat')",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+
+# residuals vs. brouwer_score
+ppi = 200
+png("plots/m13_res_vs_bs.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = brouwer_score, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "Brouwer score",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+
+# residuals vs. avg_conn_sent
+ppi = 200
+png("plots/m13_res_avg_conn_sent.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = avg_conn_sent, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "avg_conn_sent",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+
+# residuals vs. type_token_ratio
+ppi = 200
+png("plots/m13_res_vs_ttr.png", 
+    width = 9*ppi, height = 7*ppi, res = ppi)
+ggplot(dat, aes(x = type_token_ratio, y = resids)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "Type-token ratio",
+       y = "Residuals") +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# concurvity
+concurvity(m13, full = TRUE)
+```
+
+```{r}
+# explore concurvity further
+
+# pairwise concurvity measures
+conc2 <- concurvity(m13, full = FALSE)$estimate
+round(conc2, 2)
+
+# compare with model without random effect
+conc_test3 <- bam(nr_Ngr ~ lang4 + 
+                    s(rt_EUS, by = lang4) + 
+                    s(rt_LEX, by = lang4) +
+                    s(rt_HYP, by = lang4) + 
+                    ti(rt_EUS, rt_HYP, by = lang4) +
+                    s(brouwer_score, by = lang4) + 
+                    s(avg_conn_sent, by = lang4) + 
+                    ti(rt_EUS, avg_conn_sent, by = lang4) + 
+                    s(type_token_ratio, by = lang4) + 
+                    ti(rt_EUS, type_token_ratio, by = lang4) + 
+                    offset(off),
+                  data = dat, family = nb, discrete = TRUE, method = "fREML")
+
+concurvity(conc_test3)
+```
+
+## 3.3. Final model interpretation
+
+```{r}
+# summary table
+summary(m13)
+
+# compare with deviance explained of null model
+null_mod <- bam(nr_Ngr ~ offset(off) + s(fileID, bs = "re"),
+                data = dat, family = nb, method = "fREML")
+summary(null_mod)
+```
+
+```{r}
+# export summary table
+m13_tbl <- as_flextable(m13) %>%
+  colformat_double(digits = 3) %>%
+  set_table_properties(layout = "fixed") %>%
+  fit_to_width(max_width = 6.5)
+
+save_as_docx(
+  "GAM Model Summary" = m13_tbl, 
+  path = "tables/m13_summary.docx"
+)
+```
+
+```{r}
+# effect plot lang4
+ppi = 200
+png("plots/effect_lang4.png", 
+    width = 7*ppi, height = 5*ppi, res = ppi)
+plot(predict_response(m13, terms = "lang4")) +
+  geom_line() +
+  labs(x = "Variety",
+       y = "Predicted rate of N-grams",
+       title = "")
+dev.off()
+```
+
+```{r}
+# effect plot rt_EUS
+ppi = 200
+png("plots/effect_rt_EUS.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "rt_EUS", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plot rt_LEX
+ppi = 200
+png("plots/effect_rt_LEX.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "rt_LEX", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 8)) +
+  labs(x = "Lexical density",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plot rt_HYP
+ppi = 200
+png("plots/effect_rt_HYP.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "rt_HYP", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 2.5)) +
+  labs(x = "Syntactic complexity (rate of 'dat')",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plot brouwer_score
+ppi = 200
+png("plots/effect_bs.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "brouwer_score", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 2)) +
+  labs(x = "Brouwer score",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plot avg_conn_sent
+ppi = 200
+png("plots/effect_avg_conn_sent.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "avg_conn_sent", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 1.5)) +
+  labs(x = "Average number of connectives per sentence",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plot type_token_ratio
+ppi = 200
+png("plots/effect_TTR.png", 
+    width = 9*ppi, height = 5*ppi, res = ppi)
+visreg(m13, "type_token_ratio", by = "lang4",
+       scale = "response", rug = TRUE) +
+  coord_cartesian(ylim = c(0, 2)) +
+  labs(x = "Type-token ratio",
+       y = "Predicted rate of N-grams") +
+  facet_wrap(facets = ~ lang4, nrow = 1,
+             labeller = as_labeller(variety_labs)) +
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+# effect plots rt_EUS x rt_HYP
+
+# NED_in
+rt_EUS_rt_HYP_ID <- visreg2d(m13, "rt_EUS", "rt_HYP", scale = "response",
+                             cond = list(lang4 = "NED_in")) +
+  labs(x = "Disfluency",
+       y = "Syntactic complexity",
+       title = "Interpreted Dutch")
+
+# NED_nl
+rt_EUS_rt_HYP_ND <- visreg2d(m13, "rt_EUS", "rt_HYP", scale = "response",
+                             cond = list(lang4 = "NED_nl")) +
+  labs(x = "Disfluency",
+       y = "Syntactic complexity",
+       title = "Netherlandic Dutch")
+
+# NED_vl
+rt_EUS_rt_HYP_BD <- visreg2d(m13, "rt_EUS", "rt_HYP", scale = "response",
+                             cond = list(lang4 = "NED_vl")) +
+  labs(x = "Disfluency",
+       y = "Syntactic complexity",
+       title = "Belgian Dutch")
+
+# combine
+ppi = 200
+png("plots/effect_rt_EUS_rt_HYP.png", 
+    width = 10*ppi, height = 6*ppi, res = ppi)
+grid.arrange(rt_EUS_rt_HYP_ID, rt_EUS_rt_HYP_ND,
+             rt_EUS_rt_HYP_BD, nrow = 2)
+dev.off()
+```
+
+```{r}
+# effect plots rt_EUS x type_token_ratio
+
+# NED_in
+rt_EUS_TTR_ID <- visreg2d(m13, "rt_EUS", "type_token_ratio", scale = "response",
+                          cond = list(lang4 = "NED_in")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Type-token ratio",
+       title = "Interpreted Dutch")
+
+# NED_nl
+rt_EUS_TTR_ND <- visreg2d(m13, "rt_EUS", "type_token_ratio", scale = "response",
+                          cond = list(lang4 = "NED_nl")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Type-token ratio",
+       title = "Netherlandic Dutch")
+
+# NED_vl
+rt_EUS_TTR_BD <- visreg2d(m13, "rt_EUS", "type_token_ratio", scale = "response",
+                          cond = list(lang4 = "NED_vl")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Type-token ratio",
+       title = "Belgian Dutch")
+
+# combine
+ppi = 200
+png("plots/effect_rt_EUS_TTR.png", 
+    width = 10*ppi, height = 6*ppi, res = ppi)
+grid.arrange(rt_EUS_TTR_ID, rt_EUS_TTR_ND,
+             rt_EUS_TTR_BD, nrow = 2)
+dev.off()
+```
+
+```{r}
+# effect plots rt_EUS x avg_conn_sent
+
+# NED_in
+rt_EUS_TTR_ID <- visreg2d(m13, "rt_EUS", "avg_conn_sent", scale = "response",
+                          cond = list(lang4 = "NED_in")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Average connectives per sentence",
+       title = "Interpreted Dutch")
+
+# NED_nl
+rt_EUS_TTR_ND <- visreg2d(m13, "rt_EUS", "avg_conn_sent", scale = "response",
+                          cond = list(lang4 = "NED_nl")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Average connectives per sentence",
+       title = "Netherlandic Dutch")
+
+# NED_vl
+rt_EUS_TTR_BD <- visreg2d(m13, "rt_EUS", "avg_conn_sent", scale = "response",
+                          cond = list(lang4 = "NED_vl")) +
+  labs(x = "Disfluency (rate of 'uhm')",
+       y = "Average connectives per sentence",
+       title = "Belgian Dutch")
+
+# combine
+ppi = 200
+png("plots/effect_rt_EUS_avg_conn_sent.png", 
+    width = 10*ppi, height = 6*ppi, res = ppi)
+grid.arrange(rt_EUS_TTR_ID, rt_EUS_TTR_ND,
+             rt_EUS_TTR_BD, nrow = 2)
+dev.off()
+```
